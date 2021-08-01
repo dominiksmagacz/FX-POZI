@@ -1,0 +1,510 @@
+#pragma warning disable 1701
+using Microsoft.Office.Interop.Outlook;
+using OutlookApp = Microsoft.Office.Interop.Outlook.Application;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Metabots.OutlookMetabot
+{
+	public enum SearchCriteria {
+		Subject,
+		Cc,
+		To,
+		From,
+		Recipents,
+		AttachmentName
+	}
+
+	public enum SaveType {
+		SaveMailMsg,
+		SaveMailRtf,
+		SaveMailDoc,
+		SaveAttachments
+	}
+
+	public class Outlook {
+		private static OutlookApp outlookApp;
+		private static MailItem mailItem;
+		private bool PreserveResults;
+
+		private List<MailItem> CurrentResultSet {
+			get; set;
+		}
+
+		private List<string> CurrentEmailStore {
+			get; set;
+		}
+
+		private List<string> CurrentFolders {
+			get; set;
+		}
+
+		private SearchCriteria? CurrentCriteria {
+			get; set;
+		}
+
+		private string CurrentCriterium {
+			get; set;
+		}
+
+		/// <summary>
+		/// Class constructor
+		/// </summary>
+		/// <param name="preserveResults">Whenever to preserve results or not - if the criteria have not changed, a new search is not carried out</param>
+		public Outlook(bool preserveResults) {
+			outlookApp = new OutlookApp();
+			PreserveResults = preserveResults;
+		}
+
+		/// <summary>
+		/// Class constructor
+		/// </summary>
+		public Outlook() {
+			outlookApp = new OutlookApp();
+			PreserveResults = false;
+		}
+
+		/// <summary>
+		/// Opens new mail window
+		/// </summary>
+		public void CreateMail() {
+			if (mailItem != null)
+				throw new System.Exception("Mail item already exists. Finish it or close before opening new instance of it.");
+
+			mailItem = (MailItem) outlookApp.CreateItem(OlItemType.olMailItem);
+			mailItem.Display();
+		}
+
+		/// <summary>
+		/// Show window of mail item
+		/// </summary>
+		public void Show() {
+			if (mailItem != null)
+				mailItem.Display();
+		}
+
+		/// <summary>
+		/// Hide opened window of mail item
+		/// </summary>
+		public void Hide() {
+			if (mailItem != null)
+				mailItem.Display(false);
+		}
+
+		/// <summary>
+		/// Inserts recipent of mail
+		/// </summary>
+		/// <param name="recipent">Recipent of the mail</param>
+		public void InsertRecipent(string recipent) {
+			if (mailItem == null || recipent == null || recipent.Length == 0)
+				throw new System.Exception("Open new mail window to enter its parameters. Parameters cannot be null.");
+
+			mailItem.To = recipent;
+		}
+
+		/// <summary>
+		/// Inserts recipents of mail
+		/// </summary>
+		/// <param name="recipents">Recipents of the mail</param>
+		public void InsertRecipent(List<string> recipents) => InsertRecipent(string.Join(";", recipents));
+
+		/// <summary>
+		/// Inserts recipents of mail
+		/// </summary>
+		/// <param name="recipents">Recipents of the mail</param>
+		public void InsertRecipent(string[] recipents) => InsertRecipent(string.Join(";", recipents));
+
+		/// <summary>
+		/// Insert CC of the mail
+		/// </summary>
+		/// <param name="cc">CC</param>
+		public void InsertCc(string cc) {
+			if (mailItem == null || cc == null || cc.Length == 0)
+				throw new System.Exception("Open new mail window to enter its parameters. Parameters cannot be null.");
+
+			mailItem.CC = cc;
+		}
+
+		/// <summary>
+		/// Insert CCs of the mail
+		/// </summary>
+		/// <param name="cc">CCs</param>
+		public void InsertCc(List<string> cc) => InsertCc(string.Join(";", cc));
+
+		/// <summary>
+		/// Insert CCs of the mail
+		/// </summary>
+		/// <param name="cc">CCs</param>
+		public void InsertCc(string[] cc) => InsertCc(string.Join(";", cc));
+
+		/// <summary>
+		/// Insert BCC of the mail
+		/// </summary>
+		/// <param name="bcc">BCC</param>
+		public void InsertBcc(string bcc) {
+			if (mailItem == null || bcc == null || bcc.Length == 0)
+				throw new System.Exception("Open new mail window to enter its parameters. Parameters cannot be null.");
+
+			mailItem.BCC = bcc;
+		}
+
+		/// <summary>
+		/// Insert BCCs of the mail
+		/// </summary>
+		/// <param name="bcc">BCCs</param>
+		public void InsertBcc(List<string> bcc) => InsertBcc(string.Join(";", bcc));
+
+		/// <summary>
+		/// Insert BCCs of the mail
+		/// </summary>
+		/// <param name="bcc">BCCs</param>
+		public void InsertBcc(string[] bcc) => InsertBcc(string.Join(";", bcc));
+
+		/// <summary>
+		/// Inserts mail subject
+		/// </summary>
+		/// <param name="subject">Subject of the mail</param>
+		public void InsertSubject(string subject) {
+			if (mailItem == null || subject == null || subject.Length == 0)
+				throw new System.Exception("Open new mail window to enter its parameters. Parameters cannot be null.");
+
+			mailItem.Subject = subject;
+		}
+
+		/// <summary>
+		/// Inserts mail body
+		/// </summary>
+		/// <param name="body">Text of the mail body</param>
+		public void InsertBody(string body) {
+			if (mailItem == null || body == null || body.Length == 0)
+				throw new System.Exception("Open new mail window to enter its parameters. Parameters cannot be null.");
+
+			string currBody = mailItem.HTMLBody;
+			mailItem.HTMLBody = body + currBody;
+		}
+
+		/// <summary>
+		/// Adds attachment to mail
+		/// </summary>
+		/// <param name="path">Path of the file</param>
+		public void InsertAttachment(string path) {
+			if (mailItem == null || path == null || path.Length == 0)
+				throw new System.Exception("Open new mail window to enter its parameters. Parameters cannot be null.");
+
+			mailItem.Attachments.Add(path);
+		}
+
+		/// <summary>
+		/// Adds attachments to mail
+		/// </summary>
+		/// <param name="paths">Paths of the file</param>
+		public void InsertAttachment(List<string> paths) => paths.ForEach(InsertAttachment);
+
+		/// <summary>
+		/// Adds attachments to mail
+		/// </summary>
+		/// <param name="paths">Paths of the file</param>
+		public void InsertAttachment(string[] paths) => paths.ToList().ForEach(InsertAttachment);
+
+		/// <summary>
+		/// Sends mail
+		/// </summary>
+		public void Send() {
+			if (mailItem == null)
+				throw new System.Exception("Open new mail window to send it.");
+
+			mailItem.Send();
+			mailItem = null;
+		}
+
+		/// <summary>
+		/// Check if mail exist
+		/// </summary>
+		/// <param name="emailStore">In which store search mails - for example: new List<string>{ "name.lastname@ingbank.pl" }</param>
+		/// <param name="folders">In which folders search mails - for example: new List<string>{ "Inbox", "Sent Items" }</param>
+		/// <param name="criteria">Criterium for searching - for example - SearchCriteria.Subject</param>
+		/// <param name="criterium">Criterium for searching - for example - Example Subject</param>
+		/// <param name="forceSearch">If search for mails should be forced, even if criteria didn't changed</param>
+		/// <returns>Whenever given mail is in the store or not</returns>
+		public bool CheckIfMailsExists(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium, bool forceSearch) =>
+			SearchMails(emailStore, folders, criteria, criterium, forceSearch).Count > 0;
+
+		/// <summary>
+		/// Check if mail exist
+		/// </summary>
+		/// <param name="emailStore">In which store search mails - for example: new List<string>{ "name.lastname@ingbank.pl" }</param>
+		/// <param name="folders">In which folders search mails - for example: new List<string>{ "Inbox", "Sent Items" }</param>
+		/// <param name="criteria">Criterium for searching - for example - SearchCriteria.Subject</param>
+		/// <param name="criterium">Criterium for searching - for example - Example Subject</param>
+		/// <returns>Whenever given mail is in the store or not</returns>
+		public bool CheckIfMailsExists(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium) =>
+			CheckIfMailsExists(emailStore, folders, criteria, criterium, false);
+
+		/// <summary>
+		/// Check if mail exist and perform action on it
+		/// </summary>
+		/// <param name="emailStore">In which store search mails - for example: new List<string>{ "name.lastname@ingbank.pl" }</param>
+		/// <param name="folders">In which folders search mails - for example: new List<string>{ "Inbox", "Sent Items" }</param>
+		/// <param name="criteria">Criterium for searching - for example - SearchCriteria.Subject</param>
+		/// <param name="criterium">Criterium for searching - for example - Example Subject</param>
+		/// <param name="action">Action to perform</param>
+		/// <param name="savePath">Path where files will be saved</param>
+		/// <param name="forceSearch">If search for mails should be forced, even if criteria didn't changed</param>
+		/// <returns>Whenever given mail is in the store or not</returns>
+		public bool CheckIfMailsExists(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium,
+			SaveType action, string savePath, bool forceSearch) {
+			var resultOfSearch = SearchMails(emailStore, folders, criteria, criterium, forceSearch);
+			if (resultOfSearch.Count <= 0) return false;
+
+			foreach (var mail in resultOfSearch) {
+				switch (action) {
+					case SaveType.SaveAttachments:
+						SaveAttachments(mail, savePath);
+						break;
+					case SaveType.SaveMailDoc:
+						SaveMail(mail, savePath, ".doc", OlSaveAsType.olDoc);
+						break;
+					case SaveType.SaveMailMsg:
+						SaveMail(mail, savePath, ".msg", OlSaveAsType.olMSG);
+						break;
+					case SaveType.SaveMailRtf:
+						SaveMail(mail, savePath, ".rtf", OlSaveAsType.olRTF);
+						break;
+					default:
+						throw new System.Exception($"{nameof(SaveType)} not supported");
+				}
+			}
+
+			return true;
+		}
+
+		/// <summary>
+		/// Check if mail exist and perform action on it
+		/// </summary>
+		/// <param name="emailStore">In which store search mails - for example: new List<string>{ "name.lastname@ingbank.pl" }</param>
+		/// <param name="folders">In which folders search mails - for example: new List<string>{ "Inbox", "Sent Items" }</param>
+		/// <param name="criteria">Criterium for searching - for example - SearchCriteria.Subject</param>
+		/// <param name="criterium">Criterium for searching - for example - Example Subject</param>
+		/// <param name="action">Action to perform</param>
+		/// <param name="savePath">Path where files will be saved</param>
+		/// <returns>Whenever given mail is in the store or not</returns>
+		public bool CheckIfMailsExists(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium, SaveType action,
+			string savePath) => CheckIfMailsExists(emailStore, folders, criteria, criterium, action, savePath, false);
+
+		/// <summary>
+		/// Check if mail exist and delete it
+		/// </summary>
+		/// <param name="emailStore">In which store search mails - for example: new List<string>{ "name.lastname@ingbank.pl" }</param>
+		/// <param name="folders">In which folders search mails - for example: new List<string>{ "Inbox", "Sent Items" }</param>
+		/// <param name="criteria">Criterium for searching - for example - SearchCriteria.Subject</param>
+		/// <param name="criterium">Criterium for searching - for example - Example Subject</param>
+		/// <param name="forceSearch">If search for mails should be forced, even if criteria didn't changed</param>
+		/// <returns></returns>
+		public bool DeleteMail(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium, bool forceSearch) {
+			var resultOfSearch = SearchMails(emailStore, folders, criteria, criterium, forceSearch);
+			if (resultOfSearch.Count <= 0) return false;
+
+			foreach (var mail in resultOfSearch)
+				mail.Delete();
+
+			return true;
+		}
+
+		/// <summary>
+		/// Check if mail exist and delete it
+		/// </summary>
+		/// <param name="emailStore">In which store search mails - for example: new List<string>{ "name.lastname@ingbank.pl" }</param>
+		/// <param name="folders">In which folders search mails - for example: new List<string>{ "Inbox", "Sent Items" }</param>
+		/// <param name="criteria">Criterium for searching - for example - SearchCriteria.Subject</param>
+		/// <param name="criterium">Criterium for searching - for example - Example Subject</param>
+		/// <returns></returns>
+		public bool DeleteMail(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium) =>
+			DeleteMail(emailStore, folders, criteria, criterium, false);
+
+		/// <summary>
+		/// Method to search MailItems in Mailbox that fulfills given criteria
+		/// </summary>
+		/// <param name="emailStore">In which store search mails - for example: new List<string>{ "name.lastname@ingbank.pl" }</param>
+		/// <param name="folders">In which folders search mails - for example: new List<string>{ "Inbox", "Sent Items" }</param>
+		/// <param name="criteria">Criterium for searching - for example - SearchCriteria.Subject</param>
+		/// <param name="criterium">Criterium for searching - for example - Example Subject
+		/// <param name="forceSearch">If search for mails should be forced, even if criteria didn't changed</param>
+		/// <returns>List of mailitems fulfilling search criteria</returns>
+		private List<MailItem> SearchMails(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium, bool forceSearch) {
+			if (PreserveResults && !forceSearch && !CheckIfCriteriasHaveChanged(emailStore, folders, criteria, criterium))
+				return CurrentResultSet;
+
+			var result = new List<MailItem>();
+			var stores = outlookApp.Session.Stores;
+			var listOfStoresFolders = new List<List<string>>();
+
+			foreach (var store in stores) {
+				if (!emailStore.Contains((store as Store).DisplayName)) continue ;
+
+				var root = (store as Store).GetRootFolder() as Folder;
+				listOfStoresFolders.Add(EnumerateFolders(root));
+			}
+
+			foreach (var storesNames in listOfStoresFolders) {
+				foreach (var folderPath in storesNames) {
+					var fold = getFolderFromPath(folderPath);
+					if (!folders.Contains(fold.Name)) continue ;
+
+					Items items = fold.Items;
+
+					foreach (object collectionItem in items) {
+						MailItem currentMail = collectionItem as MailItem;
+						switch (criteria) {
+							case SearchCriteria.Subject:
+								if (currentMail == null || currentMail.Subject == null || !currentMail.Subject.Contains(criterium)) continue ;
+								break;
+							case SearchCriteria.Cc:
+								if (currentMail == null || currentMail.CC == null || !currentMail.CC.Contains(criterium)) continue ;
+								break;
+							case SearchCriteria.From:
+								if (currentMail == null || currentMail.Sender.Name == null || !currentMail.Sender.Name.Contains(criterium)) continue ;
+								break;
+							case SearchCriteria.To:
+								if (currentMail == null || currentMail.To == null || !currentMail.To.Contains(criterium)) continue ;
+								break;
+							case SearchCriteria.Recipents:
+								if (currentMail == null || currentMail.Recipients == null) continue ;
+
+								var recipentsString = "";
+								for (var i = 1; i <= currentMail.Recipients.Count; i++)
+									recipentsString += currentMail.Recipients[i].Name + ";";
+
+								if (!recipentsString.Contains(criterium)) continue ;
+								break;
+							case SearchCriteria.AttachmentName:
+								if (currentMail == null || currentMail.Attachments == null) continue ;
+
+								var attachmentString = "";
+								for (var i = 1; i <= currentMail.Attachments.Count; i++)
+									try {
+									attachmentString += currentMail.Attachments[i].FileName + ";";
+								}
+								catch {
+								}
+								if (!attachmentString.Contains(criterium)) continue ;
+								break;
+							default:
+								throw new System.Exception($"{nameof(SearchCriteria)} not supported");
+						}
+
+						result.Add(currentMail);
+					}
+				}
+			}
+
+			CurrentEmailStore = emailStore;
+			CurrentFolders = folders;
+			CurrentCriteria = criteria;
+			CurrentCriterium = criterium;
+			CurrentResultSet = result;
+			return result;
+		}
+
+		private bool CheckIfCriteriasHaveChanged(List<string> emailStore, List<string> folders, SearchCriteria criteria, string criterium) {
+			if (CurrentEmailStore == null || CurrentFolders == null || CurrentCriteria == null || string.IsNullOrEmpty(CurrentCriterium) ||
+				criteria != CurrentCriteria || criterium != CurrentCriterium || !emailStore.SequenceEqual(CurrentEmailStore) ||
+				!folders.SequenceEqual(CurrentFolders))
+				return true;
+
+			return false;
+		}
+
+		/// <summary>
+		/// Gets all folders in folder - returns its paths
+		/// </summary>
+		private List<string> EnumerateFolders(Folder folder) {
+			var ret = new List<string>();
+			Folders childFolders = folder.Folders;
+			if (childFolders.Count > 0) {
+				foreach (Folder childFolder in childFolders) {
+					ret.Add(childFolder.FolderPath);
+					ret.AddRange(EnumerateFolders(childFolder));
+				}
+			}
+
+			return ret;
+		}
+
+		/// <summary>
+		/// Returns folder from folderpath
+		/// </summary>
+		private Folder getFolderFromPath(string folderPath) {
+			if (folderPath.StartsWith(@"\\"))
+				folderPath = folderPath.Remove(0, 2);
+
+			string[] folders = folderPath.Split('\\');
+			Folder folder = outlookApp.Session.Folders[folders[0]] as Folder;
+
+			if (folder != null) {
+				for (int i = 1; i <= folders.GetUpperBound(0); i++) {
+					Folders subFolders = folder.Folders;
+					folder = subFolders[folders[i]] as Folder;
+					if (folder == null)
+						return null;
+				}
+			}
+
+			return folder;
+		}
+
+		/// <summary>
+		/// Save Attachments to path
+		/// Path automatically adds \ to its end if there isn't such character already
+		/// If in given location already exists file with same filename, then to the new filename at the end will be added ' ($NUM$)'
+		/// starting with $NUM$ at 1 and its growing if there is already file with such number
+		/// </summary>
+		private void SaveAttachments(MailItem mail, string savePath) {
+			if (!savePath.EndsWith("\\")) savePath += "\\";
+			if (mail != null && mail.Attachments.Count > 0)
+				for (int i = 1; i <= mail.Attachments.Count; i++) {
+				var filename = System.IO.Path.GetFileNameWithoutExtension(mail.Attachments[i].FileName);
+				var extension = System.IO.Path.GetExtension(mail.Attachments[i].FileName);
+				var fileExistCnt = 1;
+				var tmpFileName = filename;
+				while (System.IO.File.Exists(savePath + tmpFileName + extension)) {
+					tmpFileName = $"{filename} ({fileExistCnt})";
+					fileExistCnt++;
+				}
+
+				mail.Attachments[i].SaveAsFile(savePath + tmpFileName + extension);
+			}
+		}
+
+		/// <summary>
+		/// Saves MailItem to path
+		/// Path automatically adds \ to its end if there isn't such character already
+		/// If in given location already exists file with same filename, then to the new filename at the end will be added ' ($NUM$)'
+		/// starting with $NUM$ at 1 and its growing if there is already file with such number
+		/// </summary>
+		private void SaveMail(MailItem mail, string savePath, string extension, OlSaveAsType saveType) {
+			if (!savePath.EndsWith("\\")) savePath += "\\";
+			savePath = $"{savePath}{mail.ConversationTopic}";
+			var fileExistCnt = 1;
+			var tmpSavePath = savePath;
+			while (System.IO.File.Exists(tmpSavePath + extension)) {
+				tmpSavePath = $"{savePath} ({fileExistCnt})";
+				fileExistCnt++;
+			}
+
+			mail.SaveAs(tmpSavePath + extension, saveType);
+		}
+
+		/// <summary>
+		/// Get orginal Outlook object
+		/// </summary>
+		/// <returns>Orginal Outlook object</returns>
+		public OutlookApp GetOutlookObject() => outlookApp;
+
+		/// <summary>
+		/// Gets current MailItem is set
+		/// </summary>
+		/// <returns>Current MailItem object</returns>
+		public MailItem GetCurrentMailItem() => mailItem;
+	}
+}
+#pragma warning restore 1701
