@@ -1,0 +1,324 @@
+using Metabots.ExcelMetabot;
+using Metabots.OutlookMetabot;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using OutlookApp = Microsoft.Office.Interop.Outlook.Application;
+using Microsoft.Office.Interop.Outlook;
+using System.Runtime.InteropServices;
+using Microsoft.VisualBasic;
+using Microsoft.Office.Interop.Excel;
+using ExcelApp = Microsoft.Office.Interop.Excel.Application;
+using System.Text;
+
+
+namespace ING_Us_ugi_dla_Biznesu.ZRPA_.FX_POS_HU {
+	class Program {
+		static OutlookApp o;
+		static MAPIFolder folder;
+		static Items mails;
+		static MailItem mail;
+
+		private static OutlookApp outlookApp = new OutlookApp();
+		private static NameSpace nameSpace;
+		private static Explorer explorer;
+
+		private static ExcelApp excelApp;
+		private static Workbook workBook;
+		private static Worksheet workSheet;
+		private static Workbook workBookNPVDiffs;
+		private static Workbook workBookNPVPosition;
+		private static Worksheet workSheetNPVPosition;
+		private static Worksheet workSheetNPVDiffs;
+
+
+		static void searchMails(string dateFxPos) {
+
+			try {
+				o = (OutlookApp) Marshal.GetActiveObject("Outlook.Application");
+			}
+			catch {
+				MessageBox.Show("Outlook Problem");
+				o = new OutlookApp();
+			}
+
+			var oNS = o.GetNamespace("mapi");
+			folder = oNS.GetDefaultFolder(OlDefaultFolders.olFolderInbox);
+			mails = folder.Items;
+			Store store = null;
+
+			string FXPozi = "";
+			string data = "";
+			string dataOfFXPozi = "";
+			mails.Sort("[ReceivedTime]", true);
+			foreach (dynamic item in mails) {
+				if (item is MailItem) {
+					string title = item.Subject;
+					mail = item;
+//					System.Console.WriteLine(mail.Subject);
+					string buff = title;
+					//					mail.ToString();
+					if (buff.Contains("RE: FX Pozi") && item.ReceivedTime.ToString().Contains(dateFirsYear(dateFxPos).Replace('.', '-'))) {  //prod mail
+						FXPozi = item.Body;
+						FXPoziCopy(FXPozi);
+					}
+				}
+			}
+		}
+
+		public static void FXPoziCopy(string FXPozi) {
+			var FXPoziTab = FXPozi.Split(null);
+			int indexStart = Array.IndexOf(FXPoziTab, "AUD");
+			String[] valuesToCopy = new string[24];
+			indexStart += 4;
+			for (int i = 0; i<23; i++) {
+				valuesToCopy[i] = FXPoziTab[indexStart];
+				indexStart += 8;
+			}
+			Excel excel = new Excel();
+			Thread.Sleep(2000);
+			excel.Open(@"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\NPV_diff_excel.xlsx");
+			excel.Show();
+			int count = 2;
+			for (int i = 0; i< 23; i++) {
+				excel.SetValue(count, 4, valuesToCopy[i]);
+				count++;
+			}
+			excel.Save();
+			excel.Close();
+			excel.Quit();
+		}
+
+		public static void MNBRates(string dateFxPos, Excel excel) {
+			string dateToPath = dateToMNB(dateFxPos);
+			string folderPath = @"\\fsbudprd.pl.ing.net\Archive\Xrate\Public\mnb";
+			string fileName = $"MNB_{dateToPath}.txt";
+			string path = Path.Combine(folderPath, fileName);
+			if (!System.IO.File.Exists(path)) {
+				System.Console.WriteLine("File is not exist");
+			}
+			string[] rates = new string[25];
+			string readText = System.IO.File.ReadAllText(path);
+			var values = readText.Split(null);
+			int startIndex = Array.IndexOf(values, "AUD");
+			startIndex++;
+			
+			rates[0] = values[startIndex];
+			rates[1] = values[startIndex+3];
+			rates[2] = values[startIndex+7];
+			rates[3] = values[startIndex+10];
+			rates[4] = values[startIndex+13];
+			rates[5] = values[startIndex+17];
+			rates[6] = values[startIndex+21];
+			rates[7] = values[startIndex+24];
+			rates[8] = values[startIndex+27];
+			rates[9] = values[startIndex+31];
+			rates[10] = values[startIndex+35];
+			rates[11] = values[startIndex+39];
+			rates[12] = values[startIndex+44];
+			rates[13] = values[startIndex+47];
+			rates[14] = values[startIndex+51];
+			rates[15] = values[startIndex+54];
+			rates[16] = values[startIndex+58];
+			rates[17] = values[startIndex+62];
+			rates[18] = values[startIndex+67];
+			rates[19] = values[startIndex+71];
+			rates[20] = values[startIndex+74];
+			rates[21] = values[startIndex+79];
+			rates[22] = values[startIndex+83];
+			rates[23] = values[startIndex+86];
+			rates[24] = values[startIndex+90];
+			RatesCopy(rates, excel);
+		}
+
+		public static void RatesCopy(string[] rates, Excel excel) {
+			string rateExChange = "";
+			double newRate;
+			excel.Open(@"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\NPV_diff_excel.xlsx");  //prod
+			excel.Show();
+			int rowCount = 2;
+			for (int i = 0; i<25; i++) {
+				if (rowCount != 11) {
+					if (rowCount == 3)
+						i = 3;
+					if(rowCount==12)
+						i = 11;
+					if (rowCount==13)
+						i = 13;
+					excel.SetValue(rowCount, 7, rates[i]);
+				}
+				else {
+					excel.SetValue(rowCount, 7, "1");
+				}
+					rowCount++;
+			}
+			rateExChange = excel.GetValue(13, 7);
+			newRate = Convert.ToDouble(rateExChange);
+			newRate = newRate / 100;
+			excel.SetValue(13, 7, newRate);
+			excel.Save();
+			excel.Close();
+			excel.Quit();
+		}
+
+		static public void excelNpvBasedFxPosition(string dateFxPos, Excel excel) {
+		    excel.GetExcelObject().AutomationSecurity = Microsoft.Office.Core.MsoAutomationSecurity.msoAutomationSecurityByUI;
+			excel.Open(@"\\FSBUDPRD.PL.ING.NET\Prog\FXNPV\NPV-based-fx-position.xlsm");  //prod
+			excel.Show();
+			string dateFxPosDiffFormat = reverseDate(dateFxPos);
+			excel.SetValue(1, 7, dateFxPosDiffFormat);
+			Thread.Sleep(80000);
+			string name = "cash_GT_LMF"; //prod
+			string folder = @"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\" + getYear(dateFxPos);
+			string fileName = "NPV-based-fx-position" + dateFirsYear(dateFxPos);
+			excel.GetExcelWorkbookObject().SaveAs(System.IO.Path.Combine(folder, fileName + ".xlsm"), FileFormat: XlFileFormat.xlOpenXMLWorkbookMacroEnabled, AccessMode: XlSaveAsAccessMode.xlNoChange);
+			excel.Close();
+			excel.Quit();
+		}
+
+
+		static public void copyValues(string dateFxPos, Excel excel){
+
+			excelApp = new ExcelApp();
+            excelApp.Visible = true;
+			string folder = @"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\" + getYear(dateFxPos);
+			string fileName = "NPV-based-fx-position" + dateFirsYear(dateFxPos);
+			Thread.Sleep(2000);
+			workBookNPVPosition = excelApp.Workbooks.Open(System.IO.Path.Combine(folder, fileName + ".xlsm"));  //prod
+			Thread.Sleep(500);
+			workSheetNPVPosition = (Worksheet)workBookNPVPosition.Sheets["fxpos"];
+			Thread.Sleep(2000);
+			workBookNPVDiffs = excelApp.Workbooks.Open(@"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\NPV_diff_excel.xlsx");
+			Thread.Sleep(500);
+			workSheetNPVDiffs = (Worksheet)workBookNPVDiffs.Sheets["Sheet1"];
+            workSheetNPVPosition.Activate();
+			Microsoft.Office.Interop.Excel.Range source = workSheetNPVPosition.Range["F7:F29"];
+			workSheetNPVDiffs.Activate();
+			Microsoft.Office.Interop.Excel.Range destiny = workSheetNPVDiffs.Range["B2:B24"];
+			source.Copy(destiny);
+			workBookNPVPosition.Close();
+			workBookNPVDiffs.Save();
+			workBookNPVDiffs.Close();
+			excelApp.Quit();
+			copyFormula(dateFxPos,excel);
+			searchMails(dateFxPos);
+		}
+		
+		public static void copyFormula(string dateFxPos, Excel excel){
+			string folder = @"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\" + getYear(dateFxPos);
+			string fileName = "NPV-based-fx-position" + dateFirsYear(dateFxPos);
+			excel.Open(System.IO.Path.Combine(folder, fileName + ".xlsm"));
+			string[] values = new string[23];
+			int rowCount = 36;
+			for (int i = 0; i<23; i++ ){
+				values [i] = excel.GetValueText(rowCount,9);
+				rowCount++;
+			}
+			excel.Close();
+			excel.Quit();
+			excel.Open(@"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\NPV_diff_excel.xlsx");
+			rowCount = 2;
+			for (int i = 0; i<23;  i++){
+				excel.SetValue(rowCount, 3, values[i]);
+				rowCount++;
+			}
+			excel.Save();
+			excel.Close();
+			excel.Quit();
+		}
+
+		public static void sendMail(Excel excel, string dateFxPos){
+			Thread.Sleep(2000);
+			excel.Open(@"\\ad.ing.net\WPS\HU\P\GD\201087\NPV_based_fx_positions\NPV_diff_excel.xlsx");  //prod
+			excel.Show();
+
+			Outlook o = new Outlook();
+			o.CreateMail();
+			o.Show();
+			o.InsertRecipent("...");  //Fill the mails
+			o.InsertCc("...");  //Fill the mails
+			o.InsertSubject("NPV with diffs" + dateFxPos);
+		}
+
+		static public string dateFirsYear(string dateFxPos) {
+			string[] buff = new string[3];
+			buff = dateFxPos.Split('/');
+			string dateFxPosDiffFormat = buff[2] + "." + buff[1] + "." + buff[0];
+			return dateFxPosDiffFormat;
+		}
+
+		static public string reverseDate(string dateFxPos) {
+			string[] buff = new string[3];
+			buff = dateFxPos.Split('/');
+			string dateFxPosDiffFormat = buff[1] + "/" + buff[0] + "/" + buff[2];
+			return dateFxPosDiffFormat;
+		}
+
+		static public string dateToMNB(string dateFxPos){
+			string[] buff = new string[3];
+			buff = dateFxPos.Split('/');
+			string dateToPath = buff[2] + "_" + buff[1] + "_" + buff[0];
+			return dateToPath;
+		}
+		static public string getYear(string dateFxPos){
+			string[] buff = new string[3];
+			buff = dateFxPos.Split('/');
+			string year = buff[2];
+			return year;
+		}
+
+			static void answer(string dateFxPos) {
+
+			try {
+				o = (OutlookApp) Marshal.GetActiveObject("Outlook.Application");
+			}
+			catch {
+				MessageBox.Show("Outlook Problem");
+				o = new OutlookApp();
+			}
+			var oNS = o.GetNamespace("mapi");
+			folder = oNS.GetDefaultFolder(OlDefaultFolders.olFolderInbox);
+			mails = folder.Items;
+			Store store = null;
+			string FXPozi = "";
+			string data = "";
+			string dataOfFXPozi = "";
+			mails.Sort("[ReceivedTime]", true);
+			foreach (dynamic item in mails) {
+				if (item is MailItem) {
+					string title = item.Subject;
+					mail = item;
+
+					MailItem responseMail = (MailItem) o.CreateItem(OlItemType.olMailItem);
+
+
+					string buff = title;
+					if (buff.Contains("Revalcalc done as of " +dateFxPos)){
+										responseMail.Body = "Dear All, \nno manual adjustment for "+dateFxPos+". \nkind regards"+mail.Body;
+					responseMail.CC = mail.CC;
+					responseMail.To = "...";  //Fill the mails
+					responseMail.CC = "....";  //Fill the mails
+					responseMail.Subject = "RE: " + mail.Subject;
+					responseMail.Display();
+					}
+				}
+			}
+		}
+
+		static void Main(string[] args) {
+			Excel excel = new Excel();
+			
+			string dateFxPos = Microsoft.VisualBasic.Interaction.InputBox("What is the date of process? \nformat: DD/MM/YYYY", "Date");
+
+			excelNpvBasedFxPosition(dateFxPos, excel);
+			copyValues(dateFxPos, excel);
+			MNBRates(dateFxPos, excel);
+			sendMail(excel, dateFxPos);
+			answer(dateFxPos);
+		}
+	}
+}
