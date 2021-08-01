@@ -1,0 +1,1183 @@
+#pragma warning disable 1701
+using System;
+using System.Linq;
+using Microsoft.Office.Interop.Excel;
+using ExcelApp = Microsoft.Office.Interop.Excel.Application;
+using System.Runtime.InteropServices;
+
+namespace Metabots.ExcelMetabot
+{
+	public class Excel {
+		public enum UpdateLink {
+			DontUpdate = 0,
+			UpdateExternalNotRemote = 1,
+			UpdateRemoteNotExternal = 2,
+			UpdateAll = 3
+		}
+
+		public enum FileExtensionType {
+			Xls = 0,
+			Xlsx = 1,
+			Csv = 2
+		}
+
+		private ExcelApp excelApp;
+		private Workbook workBook;
+		private Worksheet workSheet;
+
+		/// <summary>
+		/// Class constructor
+		/// </summary>
+		/// <param name="newExcel">Set true to create a new instance of MS Excel, false to connect to existing one</param>
+		public Excel(bool newExcel) {
+			try {
+				if (newExcel) {
+					excelApp = new ExcelApp();
+				}
+				else {
+					//TODO method below walks only in one excel in process list (search by its name)
+					excelApp = (ExcelApp) Marshal.GetActiveObject("Excel.Application");
+					workBook = (Workbook) excelApp.ActiveWorkbook;
+					workSheet = (Worksheet) workBook.ActiveSheet;
+				}
+			}
+			catch (Exception ex) {
+				Console.WriteLine(ex);
+				Console.WriteLine(ex.StackTrace);
+			}
+		}
+
+        /// <summary>
+        /// Class constructor, always creates new instance of MS Excel.
+        /// </summary>
+        public Excel()
+        {
+            excelApp = new ExcelApp();
+        }
+
+		/// <summary>
+		/// Opens excel file
+		/// </summary>
+		/// <param name="path">Path to the file</param>
+		public void Open(string path) => workBook = excelApp.Workbooks.Open(path);
+
+		/// <summary>
+		/// Opens excel file with Update Links parameter
+		/// </summary>
+		/// <param name="UpdateLinks">Update Links parameter to choose from Excel.UpdateLink </param>
+		public void Open(string path, UpdateLink updateLink) => workBook = excelApp.Workbooks.Open(path, UpdateLinks: (int) updateLink);
+
+		/// <summary>
+		/// Loads XML file as Excel file
+		/// </summary>
+		/// <param name="path">Path to the file</param>
+		public void OpenXml(string path) => workBook = excelApp.Workbooks.OpenXML(path, Type.Missing, XlXmlLoadOption.xlXmlLoadImportToList);
+
+#region Workbooks
+
+		/// <summary>
+		/// Adds new workbook with one worksheet with default name
+		/// </summary>
+		public void AddWorkbook() => AddWorkbook("");
+
+		/// <summary>
+		/// Adds new workbook with one worksheet with parameterized name
+		/// </summary>
+		/// <param name="worksheetName">New worksheet name</param>
+		public void AddWorkbook(string worksheetName) {
+			workBook = excelApp.Workbooks.Add();
+			workSheet = (Worksheet) workBook.ActiveSheet;
+
+			if (worksheetName.Length > 0)
+				workSheet.Name = worksheetName;
+		}
+
+#endregion
+
+#region Worksheets
+
+		/// <summary>
+		/// Adds new worksheet with default name
+		/// </summary>
+		public void AddWorksheet() {
+			workBook = (Workbook) excelApp.ActiveWorkbook;
+			workBook.Worksheets.Add();
+		}
+
+		/// <summary>
+		/// Adds new worksheet with specific name
+		/// </summary>
+		public void AddWorksheet(string name) {
+			workBook = excelApp.ActiveWorkbook;
+			workSheet = (Worksheet) workBook.Worksheets.Add(After: workBook.Sheets[workBook.Sheets.Count]);
+
+			if (name.Length > 0)
+				workSheet.Name = name;
+		}
+
+		/// <summary>
+		/// Copies worksheet to the same workbook
+		/// </summary>
+		/// <param name="name">Name of the source worksheet</param>
+		/// <param name="newName">Name of the copied worksheet</param>
+		public void CopyWorksheet(string name, string newName) {
+			ExceptionChecker(name);
+			workSheet = (Worksheet) workBook.Sheets[name];
+
+			//Copy the sheet after the last one (get it by its ID)
+			workSheet.Copy(After: (Worksheet) workBook.Sheets[workBook.Sheets.Count]);
+				((Worksheet) workBook.Sheets[workBook.Sheets.Count]).Name = newName;
+		}
+
+		/// <summary>
+		/// Copies worksheet to the same workbook
+		/// </summary>
+		/// <param name="name">Name of the source worksheet</param>
+		public void CopyWorksheet(string name) => CopyWorksheet(name, name + "_COPY");
+
+		/// <summary>
+		/// Checks whether the worksheet exists
+		/// </summary>
+		/// <param name="name">Worksheet name</param>
+		/// <returns>Whether the worksheet exists</returns>
+		public bool WorksheetExists(string name) {
+			ExceptionChecker(name);
+
+			return workBook.Sheets
+				.OfType<Worksheet>()
+				.FirstOrDefault(s => ((Worksheet) s).Name == name) != null;
+		}
+
+		/// <summary>
+		/// Activates specific sheet
+		/// </summary>
+		/// <param name="name">Sheet name</param>
+		public void ActivateSheet(string name) {
+			ExceptionChecker(name);
+			workSheet = (Worksheet) workBook.Sheets[name];
+			workSheet.Activate();
+		}
+
+		/// <summary>
+		/// Activates specific sheet
+		/// </summary>
+		/// <param name="index">Sheet index</param>
+		public void ActivateSheet(int index) {
+			ExceptionChecker(index);
+			workSheet = (Worksheet) workBook.Sheets[index];
+			workSheet.Activate();
+		}
+
+		/// <summary>
+		/// Renames a worksheet
+		/// </summary>
+		/// <param name="currName">Current name of excel worksheet</param>
+		/// <param name="newName">New name of excel worksheet</param>
+		public void ChangeWorksheetName(string currName, string newName) {
+			if (currName.Length == 0 || newName.Length == 0)
+				throw new Exception("Names cannot be empty.");
+
+			workSheet = (Worksheet) workBook.Sheets[currName];
+			workSheet.Name = newName;
+		}
+
+		/// <summary>
+		/// Renames a worksheet
+		/// </summary>
+		/// <param name="index">Index of excel worksheet</param>
+		/// <param name="newName">New name of excel worksheet</param>
+		public void ChangeWorksheetName(int index, string newName) {
+			ExceptionChecker(newName);
+			ExceptionChecker(index);
+			workSheet = (Worksheet) workBook.Sheets[index];
+			workSheet.Name = newName;
+		}
+
+		/// <summary>
+		/// Deletes specified worksheet
+		/// </summary>
+		/// <param name="index">Index of excel worksheet</param>
+		public void DeleteWorksheet(int index) {
+			ExceptionChecker(index);
+			workSheet = (Worksheet) workBook.Sheets[index];
+			workSheet.Delete();
+		}
+
+		/// <summary>
+		/// Deletes specified worksheet
+		/// </summary>
+		/// <param name="name">Worksheet name</param>
+		public void DeleteWorksheet(string name) {
+			ExceptionChecker(name);
+			workSheet = (Worksheet) workBook.Sheets[name];
+			workSheet.Delete();
+		}
+
+		/// <summary>
+		/// Hides worksheet
+		/// </summary>
+		/// <param name="index">Worksheet index</param>
+		public void HideWorksheet(int index) {
+			ExceptionChecker(index);
+			workSheet = (Worksheet) workBook.Sheets[index];
+			workSheet.Visible = XlSheetVisibility.xlSheetHidden;
+		}
+
+		/// <summary>
+		/// Hides worksheet
+		/// </summary>
+		/// <param name="name">Worksheet name</param>
+		public void HideWorksheet(string name) {
+			ExceptionChecker(name);
+			workSheet = (Worksheet) workBook.Sheets[name];
+			workSheet.Visible = XlSheetVisibility.xlSheetHidden;
+		}
+
+		/// <summary>
+		/// Shows worksheet
+		/// </summary>
+		/// <param name="index">Worksheet index</param>
+		public void ShowWorksheet(int index) {
+			ExceptionChecker(index);
+			workSheet = (Worksheet) workBook.Sheets[index];
+			workSheet.Visible = XlSheetVisibility.xlSheetVisible;
+		}
+
+		/// <summary>
+		/// Shows worksheet
+		/// </summary>
+		/// <param name="name">Worksheet name</param>
+		public void ShowWorksheet(string name) {
+			ExceptionChecker(name);
+			workSheet = (Worksheet) workBook.Sheets[name];
+			workSheet.Visible = XlSheetVisibility.xlSheetVisible;
+		}
+
+#endregion
+
+		/// <summary>
+		/// Sets value of a cell
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <param name="value">Value to be inserted to cell</param>
+		public void SetValue(int row, int col, string value) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			r.Value = value;
+		}
+
+		/// Sets value of a cell
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <param name="value">Value to be inserted to the cell</param>
+		public void SetValue(int row, int col, object value) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			r.Value = value;
+		}
+
+		/// <summary>
+		/// Sets formula of a cell
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <param name="formula">Formula to be inserted to cell</param>
+		public void SetFormula(int row, int col, string formula) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			r.Formula = formula;
+			r.Calculate();
+		}
+
+		/// <summary>
+		/// Gets formula of a cell
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <returns>Formula of a cell</returns>
+		public string GetFormula(int row, int col) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			return r.Formula.ToString();
+		}
+
+		/// <summary>
+		/// Sets the zoom level on active worksheet
+		/// </summary>
+		/// <param name="zoom">Zoom level in %</param>
+		public void SetZoom(int zoom) {
+			excelApp.ActiveWindow.Zoom = zoom;
+		}
+
+		/// <summary>
+		/// Gets the zoom level on active worksheet
+		/// </summary>
+		/// <returns>Zoom level in %</returns>
+		public string GetZoom() {
+			return excelApp.ActiveWindow.Zoom.ToString();
+		}
+
+		/// <summary>
+		/// Gets value of a cell
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <returns>Cell value as string</returns>
+		[Obsolete("Methods return only visible text. Use the GetValueText if you want to get text, " +
+			"GetValueValueVisible to get visible value and GetValueValueUnderlying to get underlying value of the cell.", false)]
+		public string GetValue(int row, int col) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			return r.Text.ToString();
+
+			//https://stackoverflow.com/questions/17359835/what-is-the-difference-between-text-value-and-value2
+		}
+
+		/// <summary>
+		/// Gets cell visible text
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <returns>Cell text as string</returns>
+		public string GetValueText(int row, int col) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			var f = new Func<string>(() => {
+					return r.Text.ToString();
+				});
+
+			return f.Invoke();
+		}
+
+		/// <summary>
+		/// Gets visible value of a cell
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <returns>Cell value as string</returns>
+		public string GetValueValueVisible(int row, int col) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			var f = new Func<string>(() => {
+					return r.Value.ToString();
+				});
+
+			return f.Invoke();
+		}
+
+		/// <summary>
+		/// Gets underlying (full) value of a cell
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		/// <returns>Cell value as string</returns>
+		public string GetValueValueUnderlying(int row, int col) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			var f = new Func<string>(() => {
+					return r.Value2.ToString();
+				});
+
+			return f.Invoke();
+		}
+
+		/// <summary>
+		/// Cleans cell value
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="col">Column index</param>
+		public void CleanValue(int row, int col) {
+			ExceptionChecker(row, col);
+
+			Range r = (Range) excelApp.Cells[row, col];
+			r.Cells.Clear();
+		}
+
+		/// <summary>
+		/// Gets active cell's value
+		/// </summary>
+		/// <returns>Active cell's value</returns>
+		public string GetActiveValue() => excelApp.ActiveCell.Value.ToString();
+
+		/// <summary>
+		/// Gets active cell's row
+		/// </summary>
+		/// <returns>Active cell's row</returns>
+		public int GetActiveRow() => excelApp.ActiveCell.Row;
+
+		/// <summary>
+		/// Gets active cell's column
+		/// </summary>
+		/// <returns>Active cell's column</returns>
+		public int GetActiveColumn() => excelApp.ActiveCell.Column;
+
+		/// <summary>
+		/// Gets last used row (by value of by formatted)
+		/// </summary>
+		/// <returns>Last used row</returns>
+		public int GetLastUsedRow() => ((Worksheet) workSheet).UsedRange.Rows.Count;
+
+		/// <summary>
+		/// Gets last used column (by value of by formatted)
+		/// </summary>
+		/// <returns>Last used column</returns>
+		public int GetLastUsedColumn() => ((Worksheet) workSheet).UsedRange.Columns.Count;
+
+		public void SetActiveCell(int row, int col) {
+			Range r = (Range) excelApp.Cells[row, col];
+			r.Select();
+		}
+
+		/// <summary>
+		/// Executes macro from specific workbook
+		/// </summary>
+		/// <param name="WorkbookName">Workbook name</param>
+		/// <param name="MacroName">Macro name</param>
+		public void RunMacro(string WorkbookName, string MacroName) => excelApp.Run(WorkbookName + "!" + MacroName);
+
+		/// <summary>
+		/// Show or hide alerts
+		/// </summary>
+		/// <param name="alerts">True to show alerts, and false to hide</param>
+		public void DisplayAlerts(bool alerts) => excelApp.DisplayAlerts = alerts;
+
+		/// <summary>
+		/// Setting Gridlines in Active Worksheet
+		/// </summary>
+		/// <param name="display">True to display, false to hide</param>
+		public void DisplayGridlines(bool display) => excelApp.ActiveWindow.DisplayGridlines = display;
+
+		/// <summary>
+		/// Gets a table from excel - starting at the top left corner and ending the bootom right
+		/// </summary>
+		/// <param name="rowStart">Starting row of table (included)</param>
+		/// <param name="colStart">Starting column of table (included)</param>
+		/// <param name="rowEnd">Last row of table (included)</param>
+		/// <param name="colEnd">Last column of table (included)</param>
+		/// <returns>String table with data from excel</returns>
+		public string[, ] GetTable(int rowStart, int colStart, int rowEnd, int colEnd) {
+			ExceptionChecker(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChekerOrder(rowStart, colStart, rowEnd, colEnd);
+
+			string[, ] ret = new string[rowEnd - rowStart + 1, colEnd - colStart + 1]; // Last col included
+
+			for (int i = 0; i <= (rowEnd - rowStart); i++) {
+				for (int j = 0; j <= (colEnd - colStart); j++) {
+					Range r = (Range) excelApp.Cells[i + rowStart, j + colStart]; // Values in excel starts at 1
+					ret[i, j] = r.Text.ToString();
+				}
+			}
+
+			return ret;
+		}
+
+		/// <summary>
+		/// Gets table from Excel - starting at left corner and ending in coordinates of last row and column in first row that had value
+		/// </summary>
+		/// <param name="row">Starting row</param>
+		/// <param name="col">Starting column</param>
+		/// <returns>String table with data from excel</returns>
+		public string[, ] GetTable(int row, int col) {
+			ExceptionChecker(row, col);
+
+			if (((Range) excelApp.Cells[row, col]).Text.ToString().Length == 0)
+				return null; // no value in starting cell
+
+			int rowEnd = row;
+			int colEnd = col;
+
+			while (((Range) excelApp.Cells[rowEnd, col]).Text.ToString().Length > 0)
+				rowEnd++;
+
+			rowEnd--; // Last checked row and original col was empty, threfore last row must be one row earlier
+
+			while (((Range) excelApp.Cells[row, colEnd]).Text.ToString().Length > 0)
+				colEnd++;
+
+			colEnd--; // Same like with rows
+
+			string[, ] ret = new string[rowEnd - row + 1, colEnd - col + 1]; // Last col included
+
+			for (int i = 0; i <= (rowEnd - row); i++) {
+				for (int j = 0; j <= (colEnd - col); j++) {
+					Range r = (Range) excelApp.Cells[i + row, j + col]; // Values in excel starts at 1
+					ret[i, j] = r.Text.ToString();
+				}
+			}
+
+			return ret;
+		}
+
+		/// <summary>
+		/// Writes table to excel file
+		/// </summary>
+		/// <param name="row">Starting row of a table</param>
+		/// <param name="col">Starting column of a table</param>
+		/// <param name="table">Table data</param>
+		/// <param name="overwrite">Overwrite existing data in place where table will be written</param>
+		/// <returns>Status of operation - true if succeded, false if failed</returns>
+		public bool SetTable(int row, int col, string[, ] table, bool overwrite) {
+			ExceptionChecker(row, col);
+
+			if (table == null)
+				throw new Exception("Table cannot be null"); // no data to write
+
+			if (table.GetLength(0) == 0 || table.GetLength(1) == 0) return true; // empty table, no data to write
+
+			if (!overwrite) // Check if any cell has value before writing table - if overwrite is false
+				for (int i = 0; i < table.GetLength(0); i++) {
+				for (int j = 0; j < table.GetLength(1); j++) {
+					Range r = (Range) excelApp.Cells[i + row, j + col]; // Values in excel starts at 1
+					if ((r.Text.ToString()).Length > 0) return false; // cant write data - already something in cells
+				}
+			}
+
+			for (int i = 0; i < table.GetLength(0); i++) {
+				for (int j = 0; j < table.GetLength(1); j++) {
+					Range r = (Range) excelApp.Cells[i + row, j + col]; // Values in excel starts at 1
+					r.Value = table[i, j];
+				}
+			}
+
+			return true;
+		}
+
+		/// <summary>
+		/// Clears the value of all cells in range
+		/// </summary>
+		/// <param name="rowStart">Starting row of table (included)</param>
+		/// <param name="colStart">Starting column of table (included)</param>
+		/// <param name="rowEnd">Last row of table (included)</param>
+		/// <param name="colEnd">Last column of table (included)</param>
+		public void CleanTable(int rowStart, int colStart, int rowEnd, int colEnd) {
+			ExceptionChecker(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChekerOrder(rowStart, colStart, rowEnd, colEnd);
+
+			Range cellStart = (Range) excelApp.Cells[rowStart, colStart];
+			Range cellEnd = (Range) excelApp.Cells[rowEnd, colEnd];
+
+			Range rangeClear = (Range) excelApp.Range[cellStart, cellEnd];
+			rangeClear.Clear();
+		}
+
+
+
+		/// <summary>
+		/// Fills column with a series of data
+		/// </summary>
+		/// <param name="row">Row number of first cell</param>
+		/// <param name="col">Column number of firs cell</param>
+		/// <param name="offset">Number of cells to fill</param>
+		public void FillSeriesColumn(int row, int col, int offset) => AutoFill(row, col, row + offset, col, XlAutoFillType.xlFillSeries);
+
+		/// <summary>
+		/// Fills column with a series of data
+		/// </summary>
+		/// <param name="row">Row number of first cell</param>
+		/// <param name="col">Column number of firs cell</param>
+		/// <param name="offset">Number of cells to fill</param>
+		public void FillSeriesRow(int row, int col, int offset) => AutoFill(row, col, row, col + offset, XlAutoFillType.xlFillSeries);
+
+		/// <summary>
+		/// Fills single column/row with a series of data
+		/// </summary>
+		/// <param name="row">Row number of first cell</param>
+		/// <param name="col">Column number of firs cell</param>
+		/// <param name="offset">Number of cells to fill</param>
+		public void FillSeries(int row, int col, int rowEnd, int colEnd) {
+			if (row != rowEnd && col != colEnd) {
+				throw new Exception("Given range is not a single column/row!");
+			}
+
+			AutoFill(row, col, rowEnd, colEnd, XlAutoFillType.xlFillSeries);
+		}
+
+		/// <summary>
+		/// Autofills a column/row
+		/// </summary>
+		/// <param name="row">Row number of first cell</param>
+		/// <param name="col">Column number of firs cell</param>
+		/// <param name="offset">Number of cells to fill</param>
+		/// <param name="xlAutoFillType"></param>
+		private void AutoFill(int row, int col, int rowEnd, int colEnd, XlAutoFillType xlAutoFillType) {
+			Range r1 = (Range)excelApp.Cells[row, col];
+			Range r2 = (Range)excelApp.Range[excelApp.Cells[row, col], excelApp.Cells[rowEnd, colEnd]];
+
+			r1.AutoFill(r2, xlAutoFillType);
+		}
+
+		/// <summary>
+		/// Sets the color of a cell
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="color">Color</param>
+		public void FormatCellColor(int row, int col, System.Drawing.Color color) {
+			ExceptionChecker(row, col);
+
+			if (color == null)
+				throw new Exception("Color cannot be null");
+
+			var r = (Range) excelApp.Cells[row, col];
+			r.Interior.Color = System.Drawing.ColorTranslator.ToOle(color);
+		}
+
+		/// <summary>
+		/// Sets the color of a cell
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="r">Parameter of RGB</param>
+		/// <param name="g">Parameter of RGB</param>
+		/// <param name="b">Parameter of RGB</param>
+		public void FormatCellColor(int row, int col, int r, int g, int b) {
+			ExceptionChecker(row, col);
+			ExceptionChecker(r, 0, 255);
+			ExceptionChecker(g, 0, 255);
+			ExceptionChecker(b, 0, 255);
+
+			var range = (Range) excelApp.Cells[row, col];
+			range.Interior.Color = System.Drawing.Color.FromArgb(r, g, b);
+		}
+
+		/// <summary>
+		/// Sets the color of all cells in range
+		/// </summary>
+		/// <param name="rowStart">Start row</param>
+		/// <param name="colStart">Start column</param>
+		/// <param name="rowEnd">End row</param>
+		/// <param name="colEnd">End column</param>
+		/// <param name="color">Color</param>
+		public void FormatCellColor(int rowStart, int colStart, int rowEnd, int colEnd, System.Drawing.Color color) {
+			ExceptionChecker(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChekerOrder(rowStart, colStart, rowEnd, colEnd);
+
+			Range range = workSheet.Range[workSheet.Cells[rowStart, colStart], workSheet.Cells[rowEnd, colEnd]];
+			range.Interior.Color = System.Drawing.ColorTranslator.ToOle(color);
+		}
+
+		/// <summary>
+		/// Sets the color of all cells in range
+		/// </summary>
+		/// <param name="rowStart">Start row</param>
+		/// <param name="colStart">Start column</param>
+		/// <param name="rowEnd">End row</param>
+		/// <param name="colEnd">End column</param>
+		/// <param name="r">Parameter of RGB</param>
+		/// <param name="g">Parameter of RGB</param>
+		/// <param name="b">Parameter of RGB</param>
+		public void FormatCellColor(int rowStart, int colStart, int rowEnd, int colEnd, int r, int g, int b) {
+			ExceptionChecker(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChekerOrder(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChecker(r, 0, 255);
+			ExceptionChecker(g, 0, 255);
+			ExceptionChecker(b, 0, 255);
+
+			Range range = workSheet.Range[workSheet.Cells[rowStart, colStart], workSheet.Cells[rowEnd, colEnd]];
+			range.Interior.Color = System.Drawing.Color.FromArgb(r, g, b);
+		}
+
+		/// <summary>
+		/// Add borders to cell
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="weight">Weight of the border, between 0 and 4 (included)</param>
+		public void FormatCellBorder(int row, int col, int weight) {
+			ExceptionChecker(row, col);
+			ExceptionChecker(weight, 0, 4);
+
+			if (weight == 0) {
+					((Range) excelApp.Cells[row, col]).Borders.LineStyle = XlLineStyle.xlLineStyleNone;
+			}
+			else {
+					((Range) excelApp.Cells[row, col]).Borders.Weight = weight;
+			}
+		}
+
+		/// <summary>
+		/// Sets the borders on all cells in range
+		/// </summary>
+		/// <param name="rowStart">Start row</param>
+		/// <param name="colStart">Start column</param>
+		/// <param name="rowEnd">End row</param>
+		/// <param name="colEnd">End column</param>
+		/// <param name="weight">Weight of the border, between 0 and 4 (included)</param>
+		public void FormatCellBorder(int rowStart, int colStart, int rowEnd, int colEnd, int weight) {
+			ExceptionChecker(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChekerOrder(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChecker(weight, 0, 4);
+
+			Range range = excelApp.Range[workSheet.Cells[rowStart, colStart], workSheet.Cells[rowEnd, colEnd]];
+			if (weight == 0) {
+				range.Borders.LineStyle = XlLineStyle.xlLineStyleNone;
+			}
+			else {
+				range.Borders.Weight = weight;
+			}
+		}
+
+		/// <summary>
+		/// Change font size
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="size">Font size</param>
+		public void FormatFontSize(int row, int col, int size) {
+			ExceptionChecker(row, col);
+
+			if (size < 0) {
+				throw new Exception("Font size must be greater than 0.");
+			}
+
+				((Range) excelApp.Cells[row, col]).Font.Size = size;
+		}
+
+		/// <summary>
+		/// Sets the font size of all cells in range
+		/// </summary>
+		/// <param name="rowStart">Start row</param>
+		/// <param name="colStart">Start column</param>
+		/// <param name="rowEnd">End row</param>
+		/// <param name="colEnd">End column</param>
+		/// <param name="size">Font size</param>
+		public void FormatFontSize(int rowStart, int colStart, int rowEnd, int colEnd, int size) {
+			ExceptionChecker(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChekerOrder(rowStart, colStart, rowEnd, colEnd);
+
+			if (size < 0) {
+				throw new Exception("Font size must be greater than 0.");
+			}
+
+			Range range = workSheet.Range[workSheet.Cells[rowStart, colStart], workSheet.Cells[rowEnd, colEnd]];
+			range.Font.Size = size;
+		}
+
+		/// <summary>
+		/// Sets bold text in a cell
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="enable">On / Off</param>
+		public void FormatFontBold(int row, int col, bool enable) {
+			ExceptionChecker(row, col);
+
+				((Range) excelApp.Cells[row, col]).Font.Bold = enable;
+		}
+
+		/// <summary>
+		/// Sets italic text in a cell
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="enable">On / Off</param>
+		public void FormatFontItalic(int row, int col, bool enable) {
+			ExceptionChecker(row, col);
+
+				((Range) excelApp.Cells[row, col]).Font.Italic = enable;
+		}
+
+		/// <summary>
+		/// Sets strikethrough text in a cell
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="enable">On / Off</param>
+		public void FormatFontStrikethrough(int row, int col, bool enable) {
+			ExceptionChecker(row, col);
+
+				((Range) excelApp.Cells[row, col]).Font.Strikethrough = enable;
+		}
+
+		/// <summary>
+		/// Sets number format of a cell
+		/// </summary>
+		/// <param name="row">Row of the cell</param>
+		/// <param name="col">Column of the cell</param>
+		/// <param name="numberFormat">Number format (e.g. dd-MM-yyyy for date)</param>
+		public void FormatCellNumberFormat(int row, int col, string numberFormat) {
+				((Range) excelApp.Cells[row, col]).NumberFormat = numberFormat;
+		}
+
+		/// <summary>
+		/// Autofits all columns
+		/// </summary>
+		public void FormatColumn() => excelApp.Columns.AutoFit();
+
+		/// <summary>
+		/// Sets column's width
+		/// </summary>
+		/// <param name="col">Column index</param>
+		/// <param name="width">Width of column</param>
+		public void FormatColumn(int col, int width) {
+			if (col <= 0) {
+				throw new Exception("Column parameter must be greater than zero.");
+			}
+
+			if (width < 0) {
+				throw new Exception("Width parameter cannot be negative");
+			}
+
+			excelApp.Range[excelApp.Cells[1, col], excelApp.Cells[1, col]].EntireColumn.ColumnWidth = width;
+		}
+
+		/// <summary>
+		/// Sets width of given columns
+		/// </summary>
+		/// <param name="colStart">First column index</param>
+		/// <param name="colEnd">Last column index</param>
+		/// <param name="width">Width of column</param>
+		public void FormatColumn(int colStart, int colEnd, int width) {
+			if (colStart <= 0 || colEnd <= 0) {
+				throw new Exception("Columns parameter must be greater than zero.");
+			}
+
+			if (colEnd < colStart) {
+				throw new Exception("Last column have to have greater or equal value than staring column have");
+			}
+
+			if (width < 0) {
+				throw new Exception("Width parameter cannot be negative");
+			}
+
+			while (colStart <= colEnd) {
+				excelApp.Range[excelApp.Cells[1, colStart], excelApp.Cells[1, colStart]].EntireColumn.ColumnWidth = width;
+				colStart++;
+			}
+		}
+
+		/// <summary>
+		/// Autofits all rows
+		/// </summary>
+		public void FormatRow() => excelApp.Rows.AutoFit();
+
+		/// <summary>
+		/// Sets row's height
+		/// </summary>
+		/// <param name="row">Row index</param>
+		/// <param name="height">Height of row</param>
+		public void FormatRow(int row, int height) {
+			if (row <= 0) {
+				throw new Exception("Row parameter must be greater than zero.");
+			}
+
+			if (height < 0) {
+				throw new Exception("Height parameter cannot be negative");
+			}
+
+			excelApp.Range[excelApp.Cells[row, 1], excelApp.Cells[row, 1]].EntireRow.RowHeight = height;
+		}
+
+		/// <summary>
+		/// Sets height of all rows in range
+		/// </summary>
+		/// <param name="rowStart">First row index</param>
+		/// <param name="rowEnd">Last row index</param>
+		/// <param name="height">Height of row</param>
+		public void FormatRow(int rowStart, int rowEnd, int height) {
+			if (rowStart <= 0 || rowEnd <= 0) {
+				throw new Exception("Rows parameter must be greater than zero.");
+			}
+
+			if (rowEnd < rowStart) {
+				throw new Exception("Last row have to have greater or equal value than staring row have");
+			}
+
+			if (height < 0) {
+				throw new Exception("Height parameter cannot be negative");
+			}
+
+			while (rowStart <= rowEnd) {
+				excelApp.Range[excelApp.Cells[rowStart, 1], excelApp.Cells[rowStart, 1]].EntireRow.RowHeight = height;
+				rowStart++;
+			}
+		}
+
+		public bool Merge(int rowStart, int colStart, int rowEnd, int colEnd) {
+			ExceptionChecker(rowStart, colStart, rowEnd, colEnd);
+			ExceptionChekerOrder(rowStart, colStart, rowEnd, colEnd);
+
+			// Check if any cell has value before merging table - currently it is neccessary
+			for (int i = 0; i < rowEnd - rowStart; i++) {
+				for (int j = 0; j < colEnd - colEnd; j++) {
+					Range r = (Range) excelApp.Cells[i + rowStart, j + colStart]; // Values in excel starts at 1
+					if ((r.Text.ToString()).Length > 0)
+						return false; // cant merge - there is something in cells
+				}
+			}
+
+				((Range) excelApp.Range[excelApp.Cells[rowStart, colStart], excelApp.Cells[rowEnd, colEnd]]).Merge(false);
+
+			return true;
+		}
+
+		/// <summary>
+		/// Saves the excel file in *.xls format (Excel 97-2003 Workbook)
+		/// </summary>
+		/// <param name="path">Path where excel will be saved</param>
+		/// <param name="fileName">Name of the excel spreadsheet</param>
+		[Obsolete("Method replaced with SaveAs")]
+		public void SaveAsXls(string path, string fileName) => SaveAsObsolete(path, fileName, ".xls");
+
+		/// <summary>
+		/// Saves the excel file in *.xlsx format (Office Open XML)
+		/// </summary>
+		/// <param name="path">Path where excel will be saved</param>
+		/// <param name="fileName">Name of the excel spreadsheet</param>
+		[Obsolete("Method replaced with SaveAs")]
+		public void SaveAsXlsx(string path, string fileName) => SaveAsObsolete(path, fileName, ".xlsx");
+
+		public void SaveAs(string path, string fileName, FileExtensionType fileExtensionType) {
+			if (path.Length == 0 || fileName.Length == 0) {
+				throw new Exception("Path and filename cannot be empty.");
+			}
+
+			if (!System.IO.Directory.Exists(path)) {
+				System.IO.Directory.CreateDirectory(path);
+			}
+
+			try {
+				var filePath = System.IO.Path.Combine(path, fileName);
+				excelApp.DisplayAlerts = false;
+
+				switch (fileExtensionType) {
+					case FileExtensionType.Csv:
+						workBook.SaveAs(System.IO.Path.Combine(path, fileName + ".csv"), FileFormat: XlFileFormat.xlCSV, AccessMode: XlSaveAsAccessMode.xlNoChange);
+						break;
+					case FileExtensionType.Xls:
+						workBook.SaveAs(System.IO.Path.Combine(path, fileName + ".xls"), FileFormat: XlFileFormat.xlExcel8, AccessMode: XlSaveAsAccessMode.xlNoChange);
+						break;
+					case FileExtensionType.Xlsx:
+						workBook.SaveAs(System.IO.Path.Combine(path, fileName + ".xlsx"), FileFormat: XlFileFormat.xlOpenXMLWorkbook, AccessMode: XlSaveAsAccessMode.xlNoChange);
+						break;
+				}
+			}
+			finally {
+				excelApp.DisplayAlerts = true;
+			}
+		}
+
+		/// <summary>
+		/// Saves the open file
+		/// </summary>
+		public void Save() => workBook.Save();
+
+		/// <summary>
+		/// Maximizes application window
+		/// </summary>
+		public void Maximize() => excelApp.WindowState = XlWindowState.xlMaximized;
+
+		/// <summary>
+		/// Hides application window
+		/// </summary>
+		public void Hide() => excelApp.Visible = false;
+
+		/// <summary>
+		/// Hides rows
+		/// </summary>
+		/// <param name="rowFrom">Row to hide - from</param>
+		/// <param name="rowTo">Row to hide - to</param>
+		public void HideRow(int rowFrom, int rowTo) {
+			workSheet = (Worksheet) workBook.ActiveSheet;
+			Range r = (Range) excelApp.Range[workSheet.Cells[rowFrom, 1], workSheet.Cells[rowTo, 1]];
+			r.EntireRow.Hidden = true;
+		}
+
+		/// <summary>
+		/// Hides row
+		/// </summary>
+		/// <param name="row">Row to hide</param>
+		public void HideRow(int row) => HideRow(row, row);
+
+		/// <summary>
+		/// Hides columns
+		/// </summary>
+		/// <param name="columnFrom">Column to hide - from</param>
+		/// <param name="columnTo">Column to hide - to</param>
+		public void HideColumn(int columnFrom, int columnTo) {
+			workSheet = (Worksheet) workBook.ActiveSheet;
+			Range r = (Range) excelApp.Range[workSheet.Cells[1, columnFrom], workSheet.Cells[1, columnTo]];
+			r.EntireColumn.Hidden = true;
+		}
+
+		/// <summary>
+		/// Hides column
+		/// </summary>
+		/// <param name="row">Column to hide</param>
+		public void HideColumn(int column) => HideColumn(column, column);
+
+		/// <summary>
+		/// Show rows
+		/// </summary>
+		/// <param name="rowFrom">Row to show - from</param>
+		/// <param name="rowTo">Row to show - to</param>
+		public void ShowRow(int rowFrom, int rowTo) {
+			workSheet = (Worksheet) workBook.ActiveSheet;
+			Range r = (Range) excelApp.Range[workSheet.Cells[rowFrom, 1], workSheet.Cells[rowTo, 1]];
+			r.EntireRow.Hidden = false;
+		}
+
+		/// <summary>
+		/// Shows row
+		/// </summary>
+		/// <param name="row">Row to show</param>
+		public void ShowRow(int row) => ShowRow(row, row);
+
+		/// <summary>
+		/// Shows columns
+		/// </summary>
+		/// <param name="columnFrom">Column to show - from</param>
+		/// <param name="columnTo">Column to show - to</param>
+		public void ShowColumn(int columnFrom, int columnTo) {
+			workSheet = (Worksheet) workBook.ActiveSheet;
+			Range r = (Range) excelApp.Range[workSheet.Cells[1, columnFrom], workSheet.Cells[1, columnTo]];
+			r.EntireColumn.Hidden = false;
+		}
+
+		/// <summary>
+		/// Shows column
+		/// </summary>
+		/// <param name="column">Column to show</param>
+		public void ShowColumn(int column) => ShowColumn(column, column);
+
+		/// <summary>
+		/// Deletes a column
+		/// </summary>
+		/// <param name="column"></param>
+		public void DeleteColumn(int column) => DeleteColumn(column, column);
+		/// <summary>
+		/// Deletes all columns in range
+		/// </summary>
+		/// <param name="columnFrom">Start index</param>
+		/// <param name="columnTo">End index</param>
+		public void DeleteColumn(int columnFrom, int columnTo) {
+			Range range = excelApp.Range[workSheet.Cells[1, columnFrom], workSheet.Cells[1, columnTo]];
+			range.EntireColumn.Delete(XlDeleteShiftDirection.xlShiftToLeft);
+		}
+		/// <summary>
+		/// Deletes a row
+		/// </summary>
+		/// <param name="row">Row index</param>
+		public void DeleteRow(int row) => DeleteRow(row, row);
+		/// <summary>
+		/// Deletes all rows in range
+		/// </summary>
+		/// <param name="rowFrom">Start index</param>
+		/// <param name="rowTo">End index</param>
+		public void DeleteRow(int rowFrom, int rowTo) {
+			Range range = excelApp.Range[workSheet.Cells[rowFrom, 1], workSheet.Cells[rowTo, 1]];
+			range.EntireRow.Delete();
+		}
+
+		/// <summary>
+		/// Shows application window
+		/// </summary>
+		public void Show() => excelApp.Visible = true;
+
+		/// <summary>
+		/// Closes workbook without saving changes
+		/// </summary>
+		public void Close() => workBook.Close(false);
+
+		/// <summary>
+		/// Function quits MS Excel
+		/// </summary>
+		public void Quit() {
+			excelApp.Quit();
+		}
+
+		/// <summary>
+		/// Functions quits MS Excel and cleans up the memory.
+		/// </summary>
+		public void QuitForce() {
+			excelApp.Quit();
+			workSheet = null;
+			excelApp = null;
+			workBook = null;
+			GC.Collect();
+		}
+
+		/// <summary>
+		/// Get orginal Excel object
+		/// </summary>
+		/// <returns>Orginal Excel object</returns>
+		public ExcelApp GetExcelObject() => excelApp;
+
+		/// <summary>
+		/// Get current Excel Workbook
+		/// </summary>
+		/// <returns>Workbook</returns>
+		public Workbook GetExcelWorkbookObject() => workBook;
+
+		/// <summary>
+		/// Get current Excel Worksheet
+		/// </summary>
+		/// <returns>Worksheet</returns>
+		public Worksheet GetExcelWorksheetObject() => workSheet;
+
+#region Private functions
+
+		private void SaveAsObsolete(string path, string filename, string extension) {
+			if (path.Length == 0 || filename.Length == 0)
+				throw new Exception("Path and filename cannot be empty.");
+
+			if (!System.IO.Directory.Exists(path))
+				System.IO.Directory.CreateDirectory(path);
+
+			path += path.Substring(path.Length - 1, 1) == @"\" ? "" : @"\";
+
+			excelApp.DisplayAlerts = false;
+			workBook.SaveAs(path + filename + extension, AccessMode: XlSaveAsAccessMode.xlNoChange);
+			excelApp.DisplayAlerts = true;
+		}
+
+		private void ExceptionChecker(int row, int col) {
+			if (row <= 0 || col <= 0) {
+				throw new Exception("Row and column must be greater than zero.");
+			}
+		}
+
+		private void ExceptionChecker(int value, int min, int max) {
+			if (value < min || value > max) {
+				throw new Exception($"Value '{value}' exceeded either minumum '{min}' or maximum '{max}' bounds.");
+			}
+		}
+
+		private void ExceptionChecker(int rowStart, int colStart, int rowEnd, int colEnd) {
+			if (rowStart <= 0 || colStart <= 0 || rowEnd <= 0 || colEnd <= 0) {
+				throw new Exception("Row and column must be greater than zero.");
+			}
+		}
+
+		private void ExceptionChekerOrder(int rowStart, int colStart, int rowEnd, int colEnd) {
+			if (rowEnd < rowStart || colEnd < colStart) {
+				throw new Exception("Last column and row have to have greater or equal values than staring column and row have");
+			}
+		}
+
+		private void ExceptionChecker(string name) {
+			if (name.Length == 0) {
+				throw new Exception("Name cannot be empty.");
+			}
+		}
+
+		private void ExceptionChecker(int index) {
+			if (index <= 0) {
+				throw new Exception("Index must be greater than zero.");
+			}
+		}
+
+#endregion
+	}
+}
+#pragma warning restore 1701
