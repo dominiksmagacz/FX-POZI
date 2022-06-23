@@ -16,7 +16,7 @@ using ExcelApp = Microsoft.Office.Interop.Excel.Application;
 using System.Text;
 
 
-namespace ING_Us_ugi_dla_Biznesu.ZRPA_.FX_POS_HU {
+namespace Pozi {
 	class Program {
 		static OutlookApp o;
 		static MAPIFolder folder;
